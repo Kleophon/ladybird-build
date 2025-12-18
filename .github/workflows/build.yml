@@ -1,4 +1,4 @@
-name: Build Ladybird (Linux + Windows)
+name: Ladybird builds
 
 on:
   push:
@@ -6,28 +6,29 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  BUILD_TYPE: Release
+
 jobs:
-  build:
+  build-ladybird:
+    name: Build Ladybird
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-2022]
-    runs-on: ${{ matrix.os }}
-
-    env:
-      CMAKE_BUILD_PARALLEL_LEVEL: 4
+        os: [ ubuntu-latest, windows-latest ]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # -------- Linux --------
+      # ---------------- Linux ----------------
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
+        shell: bash
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y \
             build-essential cmake ninja-build python3 \
             libgl1-mesa-dev libx11-dev libxrandr-dev libxcursor-dev \
@@ -38,23 +39,24 @@ jobs:
 
       - name: Configure (Linux)
         if: runner.os == 'Linux'
+        shell: bash
         run: |
-          cmake -S . -B build \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
+        shell: bash
         run: cmake --build build
 
-      - name: Upload Linux artifact
+      - name: Package Linux
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ladybird-linux
-          path: build
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -czf dist/ladybird-linux.tar.gz -C build .
 
-      # -------- Windows (MSYS2/MinGW) --------
+      # ---------------- Windows (MSYS2) ----------------
       - name: Setup MSYS2
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
@@ -77,18 +79,24 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          cmake -S . -B build \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: cmake --build build
 
-      - name: Upload Windows artifact
+      - name: Package Windows
         if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist
+          7z a dist/ladybird-windows.zip ./build/*
+
+      # ---------------- Artifacts ----------------
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ladybird-windows
-          path: build
+          name: ladybird-${{ runner.os }}
+          path: dist
